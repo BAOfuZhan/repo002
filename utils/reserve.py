@@ -9,10 +9,10 @@ from urllib3.exceptions import InsecureRequestWarning
 
 
 def get_date(day_offset: int = 0):
-    today = datetime.datetime.now().date()
-    offset_day = today + datetime.timedelta(days=day_offset)
-    tomorrow = offset_day.strftime("%Y-%m-%d")
-    return tomorrow
+    """基于北京时间获取日期字符串，避免时区混乱。"""
+    beijing_today = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date()
+    offset_day = beijing_today + datetime.timedelta(days=day_offset)
+    return offset_day.strftime("%Y-%m-%d")
 
 
 class reserve:
@@ -282,7 +282,7 @@ class reserve:
     ):
         # 统一以北京时间（UTC+8）的"今天"为基准，不再区分本地 / GitHub Actions，
         # 是否预约明天仅由 self.reserve_next_day 决定。
-        beijing_today = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).date()
+        beijing_today = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).date()
         delta_day = 1 if self.reserve_next_day else 0
         day = beijing_today + datetime.timedelta(days=delta_day)
         parm = {

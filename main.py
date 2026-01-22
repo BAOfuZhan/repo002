@@ -4,34 +4,44 @@ import argparse
 import os
 import logging
 import datetime
+from zoneinfo import ZoneInfo
 
+# 统一日志时间为北京时间，方便在 GitHub Actions 日志中查看
+# 精确到毫秒，格式示例：2026-01-22 19:16:59.123 [Asia/Shanghai] - INFO - ...
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03d [Asia/Shanghai] - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+
+def _beijing_now() -> datetime.datetime:
+    """获取北京时间（带时区信息）。"""
+    return datetime.datetime.now(ZoneInfo("Asia/Shanghai"))
 
 
 from utils import reserve, get_user_credentials
 
 
 def _now(action: bool) -> datetime.datetime:
-    """在本地和 GitHub Actions 使用不同的时间基准.
+    """获取当前逻辑时间。
 
-    - 本地模式(action=False): 使用系统本地时间, 方便你本机调试;
-    - GitHub Actions(action=True): 明确使用 UTC+8(北京时间), 不依赖 runner 的时区设置.
+    为了在 GitHub Actions 日志中时间统一可读：
+    - 本地模式(action=False): 使用本地系统时间；
+    - GitHub Actions(action=True): 使用北京时间(Asia/Shanghai)。
     """
     if action:
-        # GitHub Actions 上统一用 UTC+8 作为逻辑时间(北京时间)
-        return datetime.datetime.utcnow() + datetime.timedelta(hours=8)
-    # 本地直接用系统时间
+        return _beijing_now()
     return datetime.datetime.now()
 
 
-get_current_time = lambda action: _now(action).strftime("%H:%M:%S")
+# 只保留 3 位毫秒，和日志头部保持一致
+get_current_time = lambda action: _now(action).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 get_current_dayofweek = lambda action: _now(action).strftime("%A")
 
 
-SLEEPTIME = 0.2  # 每次抢座的间隔
-ENDTIME = "19:17:00"  # 根据学校的预约座位时间+1min即可
+SLEEPTIME = 0.1  # 每次抢座的间隔
+ENDTIME = "12:55:00"  # 根据学校的预约座位时间+1min即可
 
 ENABLE_SLIDER = True  # 是否有滑块验证（调试阶段先关闭）
 MAX_ATTEMPT = 205  # 最大尝试次数
