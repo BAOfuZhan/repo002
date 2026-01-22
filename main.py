@@ -102,9 +102,9 @@ def strategic_first_attempt(
     if now >= target_dt:
         return success_list
 
-    # 等到“目标时间前 2 分钟”附近再开始策略流程（一般由 cron 提前 2 分钟启动）
-    two_min_before = target_dt - datetime.timedelta(minutes=2)
-    while _beijing_now() < two_min_before:
+    # 等到“目标时间前 30 秒”附近再开始策略流程，由 cron 提前少量时间启动
+    thirty_before = target_dt - datetime.timedelta(seconds=30)
+    while _beijing_now() < thirty_before:
         time.sleep(0.5)
 
     usernames_list, passwords_list = None, None
@@ -159,7 +159,7 @@ def strategic_first_attempt(
             f"[strategic] Start first attempt for {username} -- {times} -- {seat_list}"
         )
 
-        # 1. 在 [T-120s, T-40s] 区间内完成登录和基础 session 准备
+        # 1. 在 [T-30s, T] 区间内完成登录和基础 session + 获取页面 token
         s = reserve(
             sleep_time=SLEEPTIME,
             max_attempt=MAX_ATTEMPT,
@@ -170,11 +170,6 @@ def strategic_first_attempt(
         s.login(username, password)
         s.requests.headers.update({"Host": "office.chaoxing.com"})
 
-        # 2. 等到“目标时间前 40 秒”，预先获取页面 token / algorithm value
-        forty_before = target_dt - datetime.timedelta(seconds=40)
-        while _beijing_now() < forty_before:
-            time.sleep(0.2)
-
         first_seat = seat_list[0]
         token, value = s._get_page_token(
             s.url.format(roomid, first_seat), require_value=True
@@ -184,14 +179,19 @@ def strategic_first_attempt(
             continue
         logging.info(f"[strategic] Pre-fetched token: {token}, value: {value}")
 
-        # 3. 等到“目标时间前 15 秒”，做滑块并拿到 validate（如果启用了滑块）
-        fifteen_before = target_dt - datetime.timedelta(seconds=15)
-        while _beijing_now() < fifteen_before:
+        # 2. 等到“目标时间前 10 秒”，做滑块并拿到 validate（如果启用了滑块）
+        ten_before = target_dt - datetime.timedelta(seconds=10)
+        while _beijing_now() < ten_before:
             time.sleep(0.1)
 
         captcha = ""
         if ENABLE_SLIDER:
             captcha = s.resolve_captcha()
+            if not captcha:
+                logging.warning(
+                    "[strategic] First captcha failed or empty, retrying once more"
+                )
+                captcha = s.resolve_captcha()
             logging.info(f"[strategic] Pre-resolved captcha: {captcha}")
 
         # 4. 等到目标时间，立刻提交一次
