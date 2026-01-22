@@ -35,8 +35,10 @@ def _now(action: bool) -> datetime.datetime:
     return datetime.datetime.now()
 
 
-# 只保留 3 位毫秒，和日志头部保持一致
-get_current_time = lambda action: _now(action).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+# 日志时间：保留 3 位毫秒，和日志头部保持一致
+get_log_time = lambda action: _now(action).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+# 逻辑比较时间：只用到当天的时分秒
+get_hms = lambda action: _now(action).strftime("%H:%M:%S")
 get_current_dayofweek = lambda action: _now(action).strftime("%A")
 
 
@@ -111,8 +113,8 @@ def login_and_reserve(users, usernames, passwords, action, success_list=None):
 
 
 def main(users, action=False):
-    current_time = get_current_time(action)
-    logging.info(f"start time {current_time}, action {'on' if action else 'off'}")
+    current_time = get_hms(action)
+    logging.info(f"start time {get_log_time(action)}, action {'on' if action else 'off'}")
     attempt_times = 0
     usernames, passwords = None, None
     if action:
@@ -133,7 +135,7 @@ def main(users, action=False):
         print(
             f"attempt time {attempt_times}, time now {current_time}, success list {success_list}"
         )
-        current_time = get_current_time(action)
+        current_time = get_hms(action)
         if sum(success_list) == today_reservation_num:
             print(f"reserved successfully!")
             return
