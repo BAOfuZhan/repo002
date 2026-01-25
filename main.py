@@ -60,6 +60,10 @@ ENDTIME = "08:01:00"  # 根据学校的预约座位时间+1min即可
 ENABLE_SLIDER = True  # 是否有滑块验证（调试阶段先关闭）
 MAX_ATTEMPT = 205  # 最大尝试次数
 RESERVE_NEXT_DAY = False  # 预约明天而不是今天的
+# 是否在每一轮主循环中都重新登录。
+# True：每一轮都会重新创建会话并登录（原有行为）；
+# False：每个账号只在第一次需要时登录一次，后续循环复用同一个会话。
+RELOGIN_EVERY_LOOP = True
 
 # 策略相关参数的默认值（可在 config.json 中覆盖）
 # STRATEGY_LOGIN_LEAD_SECONDS: 在目标时间前多少秒开始进行登录和基础 session/token 预热
@@ -265,7 +269,9 @@ def strategic_first_attempt(
     return success_list
 
 
-def login_and_reserve(users, usernames, passwords, action, success_list=None):
+def login_and_reserve(
+    users, usernames, passwords, action, success_list=None, sessions=None
+):
     logging.info(
         f"Global settings: \nSLEEPTIME: {SLEEPTIME}\nENDTIME: {ENDTIME}\nENABLE_SLIDER: {ENABLE_SLIDER}\nRESERVE_NEXT_DAY: {RESERVE_NEXT_DAY}"
     )
@@ -281,6 +287,12 @@ def login_and_reserve(users, usernames, passwords, action, success_list=None):
 
     if success_list is None:
         success_list = [False] * len(users)
+
+    # 如果传入了 sessions，但长度和 users 不匹配，则忽略 sessions，退回每轮重登
+    if sessions is not None and len(sessions) != len(users):
+        logging.error("sessions length mismatch with users, ignore sessions and relogin each loop.")
+        sessions = None
+
     current_dayofweek = get_current_dayofweek(action)
     for index, user in enumerate(users):
         username = user["username"]
@@ -313,15 +325,38 @@ def login_and_reserve(users, usernames, passwords, action, success_list=None):
             logging.info(
                 f"----------- {username} -- {times} -- {seatid} try -----------"
             )
-            s = reserve(
-                sleep_time=SLEEPTIME,
-                max_attempt=MAX_ATTEMPT,
-                enable_slider=ENABLE_SLIDER,
-                reserve_next_day=RESERVE_NEXT_DAY,
-            )
-            s.get_login_status()
-            s.login(username, password)
-            s.requests.headers.update({"Host": "office.chaoxing.com"})
+
+            # 根据 RELOGIN_EVERY_LOOP 决定是否复用会话
+            s = None
+            if sessions is not None:
+                s = sessions[index]
+                if s is None:
+                    # 该账号第一次使用：创建会话并登录
+                    s = reserve(
+                        sleep_time=SLEEPTIME,
+                        max_attempt=MAX_ATTEMPT,
+                        enable_slider=ENABLE_SLIDER,
+                        reserve_next_day=RESERVE_NEXT_DAY,
+                    )
+                    s.get_login_status()
+                    s.login(username, password)
+                    s.requests.headers.update({"Host": "office.chaoxing.com"})
+                    sessions[index] = s
+                else:
+                    # 复用已有会话，确保 Host 头正确
+                    s.requests.headers.update({"Host": "office.chaoxing.com"})
+            else:
+                # 维持原有行为：每一轮循环都重新创建会话并登录
+                s = reserve(
+                    sleep_time=SLEEPTIME,
+                    max_attempt=MAX_ATTEMPT,
+                    enable_slider=ENABLE_SLIDER,
+                    reserve_next_day=RESERVE_NEXT_DAY,
+                )
+                s.get_login_status()
+                s.login(username, password)
+                s.requests.headers.update({"Host": "office.chaoxing.com"})
+
             # 在 GitHub Actions 中传入 ENDTIME，确保内部循环在超过结束时间后及时停止
             suc = s.submit(times, roomid, seatid, action, ENDTIME if action else None)
             success_list[index] = suc
@@ -338,6 +373,12 @@ def main(users, action=False):
     if action:
         usernames, passwords = get_user_credentials(action)
     success_list = None
+
+    # 根据 RELOGIN_EVERY_LOOP 决定是否为每个用户维护持久会话
+    sessions = None
+    if not RELOGIN_EVERY_LOOP:
+        sessions = [None] * len(users)
+
     current_dayofweek = get_current_dayofweek(action)
     today_reservation_num = sum(
         1 for d in users if current_dayofweek in d.get("daysofweek")
@@ -366,7 +407,7 @@ def main(users, action=False):
             # 后续尝试使用原有逻辑
             # try:
             success_list = login_and_reserve(
-                users, usernames, passwords, action, success_list
+                users, usernames, passwords, action, success_list, sessions
             )
             # except Exception as e:
             #     print(f"An error occurred: {e}")
@@ -491,5 +532,8 @@ if __name__ == "__main__":
         STRATEGY_SLIDER_LEAD_SECONDS = int(
             strategy_cfg.get("slider_lead_seconds", STRATEGY_SLIDER_LEAD_SECONDS)
         )
+
+        # 控制是否在每一轮主循环中都重新登录
+        RELOGIN_EVERY_LOOP = bool(config.get("relogin_every_loop", RELOGIN_EVERY_LOOP))
 
     func_dict[args.method](usersdata, args.action)
