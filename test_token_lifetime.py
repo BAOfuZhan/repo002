@@ -75,7 +75,7 @@ def test_login_token_lifetime(delays=None):
     """
 
     if delays is None:
-        delays = [0, 5, 10, 20, 30, 45, 60]
+        delays = [0, 5, 10, 20, 30, 45, 60 ,70,80,90,100]
 
     s, first_seat = _build_session()
     if s is None:
