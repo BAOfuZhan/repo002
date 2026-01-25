@@ -39,7 +39,7 @@ def _now(action: bool) -> datetime.datetime:
     """获取当前逻辑时间。
 
     为了在 GitHub Actions 日志中时间统一可读：
-    - 本地模式(action=False): 使用本地系统时间；
+    - 本地模式(action=False): 使用本地系统时间；1111
     - GitHub Actions(action=True): 使用北京时间(Asia/Shanghai)。
     """
     if action:
