@@ -317,3 +317,29 @@ class reserve:
         )
         logging.info(json.loads(html))
         return json.loads(html)["success"]
+
+    def burst_submit_once(self, times, roomid, seatid, captcha, token, value):
+        """单次提交，返回完整响应 dict，用于 1.8 秒高频窗口内的逻辑判断。"""
+        beijing_today = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).date()
+        delta_day = 1 if self.reserve_next_day else 0
+        day = beijing_today + datetime.timedelta(days=delta_day)
+        parm = {
+            "roomId": roomid,
+            "startTime": times[0],
+            "endTime": times[1],
+            "day": str(day),
+            "seatNum": seatid,
+            "captcha": captcha,
+            "token": token,
+            "type": "1",
+            "verifyData": "1",
+        }
+        logging.info(f"[burst] submit parameter {parm} ")
+        parm["enc"] = verify_param(parm, value)
+        html = self.requests.post(url=self.submit_url, params=parm, verify=True).content.decode(
+            "utf-8"
+        )
+        data = json.loads(html)
+        self.submit_msg.append(times[0] + "~" + times[1] + ":  " + str(data))
+        logging.info(data)
+        return data

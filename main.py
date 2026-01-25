@@ -61,6 +61,17 @@ ENABLE_SLIDER = True  # 是否有滑块验证（调试阶段先关闭）
 MAX_ATTEMPT = 205  # 最大尝试次数
 RESERVE_NEXT_DAY = False  # 预约明天而不是今天的
 
+# 策略相关参数的默认值（可在 config.json 中覆盖）
+# STRATEGY_LOGIN_LEAD_SECONDS: 在目标时间前多少秒开始进行登录和基础 session/token 预热
+STRATEGY_LOGIN_LEAD_SECONDS = 18
+# STRATEGY_SLIDER_LEAD_SECONDS: 在目标时间前多少秒开始进行滑块验证
+STRATEGY_SLIDER_LEAD_SECONDS = 10
+# TARGET_OFFSET1_MS / TARGET_OFFSET2_MS:
+# 在目标时间点之后再延迟多少毫秒提交，分别用于第 1 次 / 第 2 次带验证码的提交
+# 例如：600ms 和 1300ms
+TARGET_OFFSET1_MS = 600
+TARGET_OFFSET2_MS = 1300
+
 
 def _get_beijing_target_from_endtime() -> datetime.datetime:
     """根据 ENDTIME 计算目标时间（北京时间，当天 ENDTIME 减 1 分钟）。"""
@@ -89,8 +100,8 @@ def strategic_first_attempt(
     """只在第一次调用时使用的“有策略抢座”。
 
     - 在目标时间前 2 分钟左右开始（由 Actions 的 cron 控制）；
-    - 目标时间前 40 秒：预先获取页面 token / algorithm value；
-    - 目标时间前 15 秒：预先完成滑块并拿到 validate；
+    - 目标时间前 20 秒：预先获取页面 token / algorithm value；
+    - 目标时间前 12 秒：预先完成滑块并拿到 validate；
     - 目标时间到达瞬间：直接调用 get_submit 提交一次；
     - 之后的重试逻辑仍交给原有 while 循环和 login_and_reserve。
     """
@@ -102,8 +113,8 @@ def strategic_first_attempt(
     if now >= target_dt:
         return success_list
 
-    # 等到“目标时间前 30 秒”附近再开始策略流程，由 cron 提前少量时间启动
-    thirty_before = target_dt - datetime.timedelta(seconds=30)
+    # 等到“目标时间前若干秒”附近再开始策略流程，由 cron 提前少量时间启动
+    thirty_before = target_dt - datetime.timedelta(seconds=STRATEGY_LOGIN_LEAD_SECONDS)
     while _beijing_now() < thirty_before:
         time.sleep(0.5)
 
@@ -179,36 +190,76 @@ def strategic_first_attempt(
             continue
         logging.info(f"[strategic] Pre-fetched token: {token}, value: {value}")
 
-        # 2. 等到“目标时间前 10 秒”，做滑块并拿到 validate（如果启用了滑块）
-        ten_before = target_dt - datetime.timedelta(seconds=10)
+        # 2. 等到“目标时间前若干秒”，做滑块并拿到 validate（如果启用了滑块）
+        ten_before = target_dt - datetime.timedelta(seconds=STRATEGY_SLIDER_LEAD_SECONDS)
         while _beijing_now() < ten_before:
             time.sleep(0.1)
 
-        captcha = ""
+        # 2. 等到“目标时间前若干秒”，做滑块并拿到两份 validate（如果启用了滑块）
+        ten_before = target_dt - datetime.timedelta(seconds=STRATEGY_SLIDER_LEAD_SECONDS)
+        while _beijing_now() < ten_before:
+            time.sleep(0.1)
+
+        captcha1 = captcha2 = ""
         if ENABLE_SLIDER:
-            captcha = s.resolve_captcha()
-            if not captcha:
+            # 第一份 captcha
+            captcha1 = s.resolve_captcha()
+            if not captcha1:
                 logging.warning(
                     "[strategic] First captcha failed or empty, retrying once more"
                 )
-                captcha = s.resolve_captcha()
-            logging.info(f"[strategic] Pre-resolved captcha: {captcha}")
+                captcha1 = s.resolve_captcha()
+            logging.info(f"[strategic] Pre-resolved captcha1: {captcha1}")
 
-        # 4. 等到目标时间，立刻提交一次
-        while _beijing_now() < target_dt:
+            # 第二份 captcha，用于第二次带验证码提交
+            captcha2 = s.resolve_captcha()
+            if not captcha2:
+                logging.warning(
+                    "[strategic] Second captcha failed or empty, retrying once more"
+                )
+                captcha2 = s.resolve_captcha()
+            logging.info(f"[strategic] Pre-resolved captcha2: {captcha2}")
+
+        # 3. 第一次带验证码提交：目标时间 + TARGET_OFFSET1_MS 毫秒
+        send_dt1 = target_dt + datetime.timedelta(milliseconds=TARGET_OFFSET1_MS)
+        while _beijing_now() < send_dt1:
             time.sleep(0.02)
 
-        logging.info("[strategic] Reached target time, do first submit now")
+        logging.info(
+            f"[strategic] First submit at {send_dt1} (offset {TARGET_OFFSET1_MS}ms)"
+        )
         suc = s.get_submit(
             url=s.submit_url,
             times=times,
             token=token,
             roomid=roomid,
             seatid=first_seat,
-            captcha=captcha,
+            captcha=captcha1,
             action=action,
             value=value,
         )
+
+        # 如果第一次已经成功，则不再进行第二次提交
+        if not suc:
+            # 4. 第二次带验证码提交：目标时间 + TARGET_OFFSET2_MS 毫秒
+            send_dt2 = target_dt + datetime.timedelta(milliseconds=TARGET_OFFSET2_MS)
+            while _beijing_now() < send_dt2:
+                time.sleep(0.02)
+
+            logging.info(
+                f"[strategic] Second submit at {send_dt2} (offset {TARGET_OFFSET2_MS}ms)"
+            )
+            suc = s.get_submit(
+                url=s.submit_url,
+                times=times,
+                token=token,
+                roomid=roomid,
+                seatid=first_seat,
+                captcha=captcha2,
+                action=action,
+                value=value,
+            )
+
         success_list[index] = suc
 
     return success_list
@@ -429,5 +480,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     func_dict = {"reserve": main, "debug": debug, "room": get_roomid}
     with open(args.user, "r+") as data:
-        usersdata = json.load(data)["reserve"]
+        config = json.load(data)
+        usersdata = config["reserve"]
+
+        # 从 config.json 中读取策略相关配置（如果存在），覆盖默认值
+        strategy_cfg = config.get("strategy", {})
+        STRATEGY_LOGIN_LEAD_SECONDS = int(
+            strategy_cfg.get("login_lead_seconds", STRATEGY_LOGIN_LEAD_SECONDS)
+        )
+        STRATEGY_SLIDER_LEAD_SECONDS = int(
+            strategy_cfg.get("slider_lead_seconds", STRATEGY_SLIDER_LEAD_SECONDS)
+        )
+
     func_dict[args.method](usersdata, args.action)

@@ -1,25 +1,36 @@
 {
     "reserve": [
-        {"username": "",
-        "password": "",
-        "times": ["09:30","22:00"],
-        "roomid":"9928",
-        "seatid":["060"],
-        "daysofweek": ["Monday"]
-    },
-        {"username": "",
-        "password": "",
-        "times": ["14:30","22:00"],
-        "roomid":"9928",
-        "seatid":["060"],
-        "daysofweek": ["Tuesday"]
-    },
-        {"username": "",
-        "password": "",
-        "times": ["08:40","22:00"],
-        "roomid":"9928",
-        "seatid":["060"],
-        "daysofweek": ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        {
+            "username": "",
+            "password": "",
+            "times": ["09:30", "22:00"],
+            "roomid": "9928",
+            "seatid": ["060"],
+            "daysofweek": ["Monday"]
+        },
+        {
+            "username": "",
+            "password": "",
+            "times": ["14:30", "22:00"],
+            "roomid": "9928",
+            "seatid": ["060"],
+            "daysofweek": ["Tuesday"]
+        },
+        {
+            "username": "",
+            "password": "",
+            "times": ["08:40", "22:00"],
+            "roomid": "9928",
+            "seatid": ["060"],
+            "daysofweek": ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        }
+    ],
+
+    "strategy": {
+        "_comment_login_lead_seconds": "在目标时间前多少秒开始执行登录 + 获取 token 的预热逻辑，默认 30。",
+        "login_lead_seconds": 20,
+
+        "_comment_slider_lead_seconds": "在目标时间前多少秒开始执行滑块验证，默认 10。",
+        "slider_lead_seconds": 13
     }
-    ]
 }
