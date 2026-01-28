@@ -72,6 +72,8 @@ RELOGIN_EVERY_LOOP = True
 STRATEGY_LOGIN_LEAD_SECONDS = 18
 # STRATEGY_SLIDER_LEAD_SECONDS: 在目标时间前多少秒开始进行滑块验证
 STRATEGY_SLIDER_LEAD_SECONDS = 10
+# FIRST_SUBMIT_OFFSET_MS: 第一次提交时，在目标时间之后再延迟多少毫秒去获取 token 并立即提交
+FIRST_SUBMIT_OFFSET_MS = 30
 # TARGET_OFFSET2_MS / TARGET_OFFSET3_MS:
 # 在第一次失败后，再额外延迟多少毫秒提交第二 / 第三次带验证码的请求
 # 例如：1200ms、1500ms
@@ -223,14 +225,14 @@ def strategic_first_attempt(
                 captcha3 = s.resolve_captcha()
             logging.info(f"[strategic] Pre-resolved captcha3: {captcha3}")
 
-        # 3. 第一次提交：在目标时间 + 30ms 时获取页面 token，获取后立即提交
-        token_fetch_dt1 = target_dt + datetime.timedelta(milliseconds=30)
+        # 3. 第一次提交：在目标时间 + FIRST_SUBMIT_OFFSET_MS 毫秒时获取页面 token，获取后立即提交
+        token_fetch_dt1 = target_dt + datetime.timedelta(milliseconds=FIRST_SUBMIT_OFFSET_MS)
         while _beijing_now() < token_fetch_dt1:
-            # 更短的 sleep 间隔，提高 30ms 附近的精度
+            # 更短的 sleep 间隔，提高 FIRST_SUBMIT_OFFSET_MS 附近的精度
             time.sleep(0.001)
 
         logging.info(
-            f"[strategic] Fetch page token for first submit at {token_fetch_dt1} (target_dt + 30ms)"
+            f"[strategic] Fetch page token for first submit at {token_fetch_dt1} (target_dt + {FIRST_SUBMIT_OFFSET_MS}ms)"
         )
         token1, value1 = s._get_page_token(
             s.url.format(roomid, first_seat), require_value=True
@@ -240,7 +242,9 @@ def strategic_first_attempt(
             continue
         logging.info(f"[strategic] Got page token for first submit: {token1}, value: {value1}")
 
-        logging.info("[strategic] Immediately do first submit after fetching page token (target_dt + 30ms)")
+        logging.info(
+            f"[strategic] Immediately do first submit after fetching page token (target_dt + {FIRST_SUBMIT_OFFSET_MS}ms)"
+        )
         suc = s.get_submit(
             url=s.submit_url,
             times=times,
