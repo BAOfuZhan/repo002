@@ -224,13 +224,14 @@ def strategic_first_attempt(
                 captcha3 = s.resolve_captcha()
             logging.info(f"[strategic] Pre-resolved captcha3: {captcha3}")
 
-        # 3. 第一次提交：先在目标时间 + 1 秒时获取页面 token，然后再延迟 TARGET_OFFSET1_MS 毫秒提交
-        token_fetch_dt1 = target_dt + datetime.timedelta(seconds=1)
+        # 3. 第一次提交：在目标时间 + 30ms 时获取页面 token，获取后立即提交
+        token_fetch_dt1 = target_dt + datetime.timedelta(milliseconds=30)
         while _beijing_now() < token_fetch_dt1:
-            time.sleep(0.02)
+            # 更短的 sleep 间隔，提高 30ms 附近的精度
+            time.sleep(0.001)
 
         logging.info(
-            f"[strategic] Fetch page token for first submit at {token_fetch_dt1} (target_dt + 1s)"
+            f"[strategic] Fetch page token for first submit at {token_fetch_dt1} (target_dt + 30ms)"
         )
         token1, value1 = s._get_page_token(
             s.url.format(roomid, first_seat), require_value=True
@@ -240,14 +241,7 @@ def strategic_first_attempt(
             continue
         logging.info(f"[strategic] Got page token for first submit: {token1}, value: {value1}")
 
-        # 再从拿到 token 的时刻开始，延迟 TARGET_OFFSET1_MS 毫秒再提交
-        send_dt1 = token_fetch_dt1 + datetime.timedelta(milliseconds=TARGET_OFFSET1_MS)
-        while _beijing_now() < send_dt1:
-            time.sleep(0.02)
-
-        logging.info(
-            f"[strategic] First submit at {send_dt1} (1s after target_dt + {TARGET_OFFSET1_MS}ms)"
-        )
+        logging.info("[strategic] Immediately do first submit after fetching page token (target_dt + 30ms)")
         suc = s.get_submit(
             url=s.submit_url,
             times=times,
