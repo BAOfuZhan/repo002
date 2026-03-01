@@ -54,7 +54,7 @@ get_hms = lambda action: _now(action).strftime("%H:%M:%S")
 get_current_dayofweek = lambda action: _now(action).strftime("%A")
 
 
-SLEEPTIME = 0.05  # 每次抢座的间隔（减少到0.05秒以加快速度）
+SLEEPTIME = 0.1  # 每次抢座的间隔（减少到0.05秒以加快速度）
 ENDTIME = "15:01:00"  # 根据学校的预约座位时间+1min即可
 
 ENABLE_SLIDER = False  # 是否有滑块验证（调试阶段先关闭）
